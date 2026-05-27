@@ -101,15 +101,23 @@ document.addEventListener('DOMContentLoaded', () => {
             if (data.success) {
                 logStatus('分析完成！已成功整合分點排行。', 'ready');
                 renderResults(data.buyers, data.sellers);
+                
+                // --- USER REQUEST UPGRADE ---
+                // Clear the stock entry so the user can easily key in a new one
+                stockNoInput.value = '';
+                // Automatically fetch and refresh a new captcha
+                fetchNewCaptcha();
             } else {
                 logStatus(`查詢失敗: ${data.error || '驗證碼錯誤或無交易資料'}`, 'error');
                 
-                // Auto-refresh captcha on failed submission to keep session alive and easy retries
-                logStatus('查詢失敗。正為您自動更新驗證碼...', 'error');
+                // Clear inputs and auto-refresh captcha even on failed submission
+                stockNoInput.value = '';
+                logStatus('查詢失敗。正為您自動清空並更新驗證碼...', 'error');
                 setTimeout(fetchNewCaptcha, 1500);
             }
         } catch (e) {
             logStatus(`查詢失敗: ${e.message}`, 'error');
+            stockNoInput.value = '';
             setTimeout(fetchNewCaptcha, 1500);
         } finally {
             startAnalyzeBtn.classList.remove('loading');
