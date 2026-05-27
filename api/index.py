@@ -9,6 +9,25 @@ from flask import Flask, jsonify, request
 
 app = Flask(__name__)
 
+# Helper to fetch the official current TWSE trading date
+def get_twse_trade_date():
+    try:
+        url = "https://www.twse.com.tw/exchangeReport/STOCK_DAY?response=json&stockNo=2330"
+        headers = {
+            "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36"
+        }
+        r = requests.get(url, headers=headers, timeout=5)
+        data = r.json()
+        if data.get("stat") == "OK" and data.get("data"):
+            # Return the last trading date in the dataset (e.g. "115/05/27")
+            return data["data"][-1][0]
+    except Exception:
+        pass
+    # Fallback to local Taiwan time
+    from datetime import datetime, timedelta, timezone
+    now = datetime.now(timezone(timedelta(hours=8)))
+    return now.strftime("%Y/%m/%d")
+
 # Route to fetch new captcha, session cookies, and form parameters from TWSE
 @app.route('/api/captcha', methods=['GET'])
 def get_captcha():
@@ -61,7 +80,6 @@ def get_captcha():
                 if res_json.get("success"):
                     ocr_code = res_json.get("result", "").strip()
         except Exception:
-            # Let it fail silently, user can still type it manually
             pass
             
         # Serialize cookies to pass back to stateless frontend
@@ -182,10 +200,14 @@ def analyze():
         net_buyers.sort(key=lambda x: x["val"], reverse=True)
         net_sellers.sort(key=lambda x: x["val"], reverse=True)
         
+        # Fetch the official TWSE trading date
+        trade_date = get_twse_trade_date()
+        
         return jsonify({
             "success": True,
             "buyers": net_buyers,
-            "sellers": net_sellers
+            "sellers": net_sellers,
+            "trade_date": trade_date
         })
         
     except Exception as e:

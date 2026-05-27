@@ -16,6 +16,8 @@ document.addEventListener('DOMContentLoaded', () => {
     const statusText = statusConsole.querySelector('.status-text');
     const buyersTableBody = document.querySelector('#buyersTable tbody');
     const sellersTableBody = document.querySelector('#sellersTable tbody');
+    const tradeDateBadge = document.getElementById('tradeDateBadge');
+    const tradeDateSpan = document.getElementById('tradeDate');
 
     // Helper to log status in UI
     function logStatus(text, type = 'pending') {
@@ -102,7 +104,12 @@ document.addEventListener('DOMContentLoaded', () => {
                 logStatus('分析完成！已成功整合分點排行。', 'ready');
                 renderResults(data.buyers, data.sellers);
                 
-                // --- USER REQUEST UPGRADE ---
+                // Show dynamic trade date badge above the results
+                if (data.trade_date) {
+                    tradeDateSpan.textContent = data.trade_date;
+                    tradeDateBadge.style.display = 'flex';
+                }
+                
                 // Clear the stock entry so the user can easily key in a new one
                 stockNoInput.value = '';
                 // Automatically fetch and refresh a new captcha

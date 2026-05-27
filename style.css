@@ -137,13 +137,40 @@ body {
     font-family: var(--font-heading);
     font-size: 1.15rem;
     font-weight: 600;
-    margin-bottom: 20px;
     display: flex;
     align-items: center;
     gap: 10px;
+    color: #e5e7eb;
+}
+
+.control-card .panel-title {
+    margin-bottom: 20px;
     border-bottom: 1px solid var(--card-border);
     padding-bottom: 12px;
-    color: #e5e7eb;
+}
+
+/* Results Header Row styling */
+.results-header-row {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    margin-bottom: 20px;
+    border-bottom: 1px solid var(--card-border);
+    padding-bottom: 12px;
+}
+
+.trade-date-badge {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    padding: 6px 14px;
+    background: rgba(59, 130, 246, 0.15);
+    border: 1px solid rgba(59, 130, 246, 0.3);
+    border-radius: 8px;
+    font-size: 0.82rem;
+    color: #60a5fa;
+    font-weight: 600;
+    box-shadow: 0 0 10px rgba(59, 130, 246, 0.1);
 }
 
 /* Inputs & Form Styling */
