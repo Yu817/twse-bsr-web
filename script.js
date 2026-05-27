@@ -18,6 +18,7 @@ document.addEventListener('DOMContentLoaded', () => {
     const sellersTableBody = document.querySelector('#sellersTable tbody');
     const tradeDateBadge = document.getElementById('tradeDateBadge');
     const tradeDateSpan = document.getElementById('tradeDate');
+    const resultsTitle = document.getElementById('resultsTitle');
 
     // Helper to log status in UI
     function logStatus(text, type = 'pending') {
@@ -104,6 +105,10 @@ document.addEventListener('DOMContentLoaded', () => {
                 logStatus('分析完成！已成功整合分點排行。', 'ready');
                 renderResults(data.buyers, data.sellers);
                 
+                // --- USER REQUEST UPGRADE 1: Show Stock Code and Stock Name ---
+                const dispName = data.stock_name ? `${stockNo} ${data.stock_name}` : stockNo;
+                resultsTitle.innerHTML = `<i class="fa-solid fa-chart-simple"></i> ${dispName} 分點買賣超排行`;
+                
                 // Show dynamic trade date badge above the results
                 if (data.trade_date) {
                     tradeDateSpan.textContent = data.trade_date;
@@ -166,6 +171,21 @@ document.addEventListener('DOMContentLoaded', () => {
             });
         }
     }
+
+    // --- USER REQUEST UPGRADE 2: Support Enter Key Press to Trigger Analysis ---
+    stockNoInput.addEventListener('keydown', (event) => {
+        if (event.key === 'Enter') {
+            event.preventDefault();
+            startAnalysis();
+        }
+    });
+
+    captchaCodeInput.addEventListener('keydown', (event) => {
+        if (event.key === 'Enter') {
+            event.preventDefault();
+            startAnalysis();
+        }
+    });
 
     // Bind event listeners
     refreshCaptchaBtn.addEventListener('click', fetchNewCaptcha);

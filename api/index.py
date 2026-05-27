@@ -9,24 +9,26 @@ from flask import Flask, jsonify, request
 
 app = Flask(__name__)
 
-# Helper to fetch the official current TWSE trading date
-def get_twse_trade_date():
+# Helper to fetch both official trading date and stock name from TWSE STOCK_DAY API
+def get_twse_details(stock_no):
     try:
-        url = "https://www.twse.com.tw/exchangeReport/STOCK_DAY?response=json&stockNo=2330"
+        url = f"https://www.twse.com.tw/exchangeReport/STOCK_DAY?response=json&stockNo={stock_no}"
         headers = {
             "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36"
         }
         r = requests.get(url, headers=headers, timeout=5)
         data = r.json()
         if data.get("stat") == "OK" and data.get("data"):
-            # Return the last trading date in the dataset (e.g. "115/05/27")
-            return data["data"][-1][0]
+            trade_date = data["data"][-1][0]
+            parts = data.get("title", "").split()
+            stock_name = parts[2] if len(parts) >= 3 else "個股"
+            return trade_date, stock_name
     except Exception:
         pass
-    # Fallback to local Taiwan time
+    # Fallback to local Taiwan time and default name
     from datetime import datetime, timedelta, timezone
     now = datetime.now(timezone(timedelta(hours=8)))
-    return now.strftime("%Y/%m/%d")
+    return now.strftime("%Y/%m/%d"), "個股"
 
 # Route to fetch new captcha, session cookies, and form parameters from TWSE
 @app.route('/api/captcha', methods=['GET'])
@@ -200,14 +202,15 @@ def analyze():
         net_buyers.sort(key=lambda x: x["val"], reverse=True)
         net_sellers.sort(key=lambda x: x["val"], reverse=True)
         
-        # Fetch the official TWSE trading date
-        trade_date = get_twse_trade_date()
+        # Fetch the official TWSE details dynamically for this stock
+        trade_date, stock_name = get_twse_details(stock_no)
         
         return jsonify({
             "success": True,
             "buyers": net_buyers,
             "sellers": net_sellers,
-            "trade_date": trade_date
+            "trade_date": trade_date,
+            "stock_name": stock_name
         })
         
     except Exception as e:
