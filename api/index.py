@@ -6,6 +6,7 @@ import base64
 import requests
 from bs4 import BeautifulSoup
 from flask import Flask, jsonify, request
+import concurrent.futures
 
 app = Flask(__name__)
 
@@ -16,7 +17,7 @@ def get_twse_details(stock_no):
         headers = {
             "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36"
         }
-        r = requests.get(url, headers=headers, timeout=5)
+        r = requests.get(url, headers=headers, timeout=12) # generous timeout for slow TWSE API
         data = r.json()
         if data.get("stat") == "OK" and data.get("data"):
             trade_date = data["data"][-1][0]
@@ -25,10 +26,36 @@ def get_twse_details(stock_no):
             return trade_date, stock_name
     except Exception:
         pass
-    # Fallback to local Taiwan time and default name
+    # Fallback to local Taiwan time and default name if TWSE API fails or rate-limits
     from datetime import datetime, timedelta, timezone
     now = datetime.now(timezone(timedelta(hours=8)))
     return now.strftime("%Y/%m/%d"), "個股"
+
+# Background worker to handle BSR submit and download
+def download_bsr_data(session, params, captcha_code, stock_no):
+    try:
+        params['CaptchaControl1'] = captcha_code
+        params['TextBox_Stkno'] = stock_no
+        
+        # Submit verification query
+        resp = session.post('https://bsr.twse.com.tw/bshtm/bsMenu.aspx', data=params, timeout=15)
+        if resp.status_code != 200:
+            return False, f"送出查詢失敗 (HTTP {resp.status_code})"
+            
+        soup = BeautifulSoup(resp.text, 'html.parser')
+        download_links = soup.select('#HyperLink_DownloadCSV')
+        
+        if not download_links:
+            return False, "驗證錯誤！驗證碼輸入有誤或今日查無此股票交易資料。"
+            
+        # Fetch the CSV transaction details
+        csv_resp = session.get('https://bsr.twse.com.tw/bshtm/bsContent.aspx', timeout=20)
+        if csv_resp.status_code != 200:
+            return False, f"下載 CSV 失敗 (HTTP {csv_resp.status_code})"
+            
+        return True, csv_resp.text
+    except Exception as e:
+        return False, f"下載發生連線錯誤: {str(e)}"
 
 # Route to fetch new captcha, session cookies, and form parameters from TWSE
 @app.route('/api/captcha', methods=['GET'])
@@ -121,31 +148,21 @@ def analyze():
         })
         session.cookies.update(cookies)
         
-        # Prepare POST params
-        params['CaptchaControl1'] = captcha_code
-        params['TextBox_Stkno'] = stock_no
-        
-        # Submit verification query
-        resp = session.post('https://bsr.twse.com.tw/bshtm/bsMenu.aspx', data=params, timeout=15)
-        if resp.status_code != 200:
-            return jsonify({"success": False, "error": f"送出查詢失敗 (HTTP {resp.status_code})"}), 500
+        # --- PARALLEL PERFORMANCE OPTIMIZATION ---
+        # Run BSR download and TWSE details fetch in parallel threads
+        with concurrent.futures.ThreadPoolExecutor(max_workers=2) as executor:
+            future_bsr = executor.submit(download_bsr_data, session, params, captcha_code, stock_no)
+            future_details = executor.submit(get_twse_details, stock_no)
             
-        soup = BeautifulSoup(resp.text, 'html.parser')
-        download_links = soup.select('#HyperLink_DownloadCSV')
-        
-        if not download_links:
-            return jsonify({
-                "success": False, 
-                "error": "驗證錯誤！驗證碼輸入有誤或今日查無此股票交易資料。"
-            }), 400
+            # Gather results
+            bsr_success, bsr_result = future_bsr.result()
+            trade_date, stock_name = future_details.result()
             
-        # Fetch the CSV transaction details
-        csv_resp = session.get('https://bsr.twse.com.tw/bshtm/bsContent.aspx', timeout=20)
-        if csv_resp.status_code != 200:
-            return jsonify({"success": False, "error": f"下載 CSV 失敗 (HTTP {csv_resp.status_code})"}), 500
+        if not bsr_success:
+            return jsonify({"success": False, "error": bsr_result}), 400
             
         # Parse CSV content in-memory
-        lines = csv_resp.text.splitlines()
+        lines = bsr_result.splitlines()
         if len(lines) < 4:
             return jsonify({"success": False, "error": "證交所傳回之資料行數不足，無效內容"}), 400
             
@@ -201,9 +218,6 @@ def analyze():
         # Sort desc
         net_buyers.sort(key=lambda x: x["val"], reverse=True)
         net_sellers.sort(key=lambda x: x["val"], reverse=True)
-        
-        # Fetch the official TWSE details dynamically for this stock
-        trade_date, stock_name = get_twse_details(stock_no)
         
         return jsonify({
             "success": True,
