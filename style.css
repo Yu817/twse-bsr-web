@@ -114,7 +114,7 @@ body {
     display: grid;
     grid-template-columns: 350px 1fr;
     gap: 20px;
-    min-height: 550px;
+    align-items: start; /* Ensures left and right card backgrounds hug contents cleanly */
 }
 
 @media (max-width: 950px) {
@@ -131,6 +131,7 @@ body {
     box-shadow: 0 8px 32px 0 rgba(0, 0, 0, 0.37);
     backdrop-filter: blur(12px);
     padding: 25px;
+    overflow: hidden; /* Prevents internal elements from overflowing rounded card borders */
 }
 
 .panel-title {
@@ -350,7 +351,6 @@ body {
 .results-layout {
     display: flex;
     gap: 20px;
-    height: 100%;
 }
 
 @media (max-width: 700px) {
@@ -367,7 +367,6 @@ body {
     display: flex;
     flex-direction: column;
     gap: 15px;
-    height: 100%;
 }
 
 .column-header {
@@ -390,13 +389,13 @@ body {
 .panel-divider {
     width: 1px;
     background: var(--card-border);
+    align-self: stretch;
 }
 
-/* Modern Tables Styling */
+/* Modern Tables Styling - FIXED TO PREVENT OVERFLOW */
 .table-container {
-    flex-grow: 1;
+    height: 420px; /* Fixed height for symmetry and overflow protection */
     overflow-y: auto;
-    max-height: 480px;
     border: 1px solid var(--card-border);
     border-radius: 10px;
     background: rgba(0, 0, 0, 0.15);
@@ -415,12 +414,12 @@ th, td {
 }
 
 th {
-    background: rgba(255, 255, 255, 0.02);
+    background: rgba(22, 28, 45, 0.95); /* matching parent dark color for stickiness */
     font-weight: 600;
     color: var(--text-secondary);
     position: sticky;
     top: 0;
-    backdrop-filter: blur(5px);
+    z-index: 2;
 }
 
 tbody tr {
