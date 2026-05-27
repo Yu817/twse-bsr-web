@@ -1,0 +1,125 @@
+<!DOCTYPE html>
+<html lang="zh-TW">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>📈 台股券商分點進出一鍵分析 - TWSE BSR Dashboard</title>
+    <link rel="stylesheet" href="style.css">
+    <!-- Google Fonts for sleek premium typography -->
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Outfit:wght@300;400;600;700&family=Noto+Sans+TC:wght@300;400;500;700&display=swap" rel="stylesheet">
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+</head>
+<body>
+    <div class="glass-bg"></div>
+    <div class="app-container">
+        <!-- Header -->
+        <header class="app-header">
+            <div class="logo">
+                <i class="fa-solid fa-chart-line header-icon"></i>
+                <div class="brand">
+                    <h1>台股券商分點一鍵分析</h1>
+                    <p>統計淨買超與淨賣超排行（以張數計，1張 = 1,000股）</p>
+                </div>
+            </div>
+            <div class="theme-badge">
+                <i class="fa-solid fa-cloud-bolt"></i> Vercel Serverless
+            </div>
+        </header>
+
+        <!-- Main Dashboard Layout -->
+        <main class="dashboard-grid">
+            
+            <!-- Control Card (Left / Top) -->
+            <section class="control-card glass-panel">
+                <h2 class="panel-title"><i class="fa-solid fa-sliders"></i> 查詢參數設定</h2>
+                
+                <div class="input-group">
+                    <label for="stockNo"><i class="fa-solid fa-tag"></i> 股票代碼</label>
+                    <input type="text" id="stockNo" placeholder="例如: 6442" value="6442">
+                </div>
+
+                <div class="captcha-box">
+                    <label><i class="fa-solid fa-shield-halved"></i> 證交所安全驗證</label>
+                    <div class="captcha-display">
+                        <div id="captchaImgContainer" class="captcha-image-wrapper">
+                            <span class="placeholder-text">取得中...</span>
+                        </div>
+                        <button id="refreshCaptcha" class="btn-icon" title="重新整理驗證碼">
+                            <i class="fa-solid fa-rotate"></i>
+                        </button>
+                    </div>
+                </div>
+
+                <div class="input-group">
+                    <label for="captchaCode"><i class="fa-solid fa-keyboard"></i> 驗證碼 (自動 OCR 辨識)</label>
+                    <input type="text" id="captchaCode" placeholder="輸入 5 位數驗證碼">
+                </div>
+
+                <button id="startAnalyze" class="btn-primary">
+                    <span class="btn-text"><i class="fa-solid fa-bolt"></i> 🚀 一鍵自動分析</span>
+                    <span class="spinner"><i class="fa-solid fa-circle-notch fa-spin"></i></span>
+                </button>
+
+                <!-- Status Console -->
+                <div class="status-console" id="statusConsole">
+                    <div class="status-bullet"></div>
+                    <span class="status-text">系統狀態: 載入中...</span>
+                </div>
+            </section>
+
+            <!-- Results Card (Right / Bottom) -->
+            <section class="results-card glass-panel">
+                <div class="results-layout">
+                    <!-- Net Buyers Column -->
+                    <div class="column-panel buyers-panel">
+                        <h3 class="column-header"><i class="fa-solid fa-circle-arrow-up"></i> 🟢 淨買超分點排行</h3>
+                        <div class="table-container">
+                            <table id="buyersTable">
+                                <thead>
+                                    <tr>
+                                        <th style="width: 15%">排行</th>
+                                        <th style="width: 55%">券商分點</th>
+                                        <th style="width: 30%; text-align: right;">淨買超 (張)</th>
+                                    </tr>
+                                </thead>
+                                <tbody>
+                                    <tr class="empty-row"><td colspan="3">請點選左側「一鍵自動分析」開始統計</td></tr>
+                                </tbody>
+                            </table>
+                        </div>
+                    </div>
+
+                    <!-- Split Line -->
+                    <div class="panel-divider"></div>
+
+                    <!-- Net Sellers Column -->
+                    <div class="column-panel sellers-panel">
+                        <h3 class="column-header"><i class="fa-solid fa-circle-arrow-down"></i> 🔴 淨賣超分點排行</h3>
+                        <div class="table-container">
+                            <table id="sellersTable">
+                                <thead>
+                                    <tr>
+                                        <th style="width: 15%">排行</th>
+                                        <th style="width: 55%">券商分點</th>
+                                        <th style="width: 30%; text-align: right;">淨賣超 (張)</th>
+                                    </tr>
+                                </thead>
+                                <tbody>
+                                    <tr class="empty-row"><td colspan="3">請點選左側「一鍵自動分析」開始統計</td></tr>
+                                </tbody>
+                            </table>
+                        </div>
+                    </div>
+                </div>
+            </section>
+        </main>
+
+        <!-- Footer -->
+        <footer class="app-footer">
+            <p>免責聲明：本工具提供之資訊僅供研究與學習使用，所有交易明細資料來源均為臺灣證券交易所。請遵循證交所使用規範並節制查詢頻率。</p>
+        </footer>
+    </div>
+</body>
+</html>
