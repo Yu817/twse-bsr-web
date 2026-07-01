@@ -6,18 +6,19 @@ import base64
 import requests
 from bs4 import BeautifulSoup
 from flask import Flask, jsonify, request
-import concurrent.futures
+from functools import lru_cache
 
 app = Flask(__name__)
 
 # Helper to fetch both official trading date and stock name from TWSE STOCK_DAY API
+@lru_cache(maxsize=256)
 def get_twse_details(stock_no):
     try:
         url = f"https://www.twse.com.tw/exchangeReport/STOCK_DAY?response=json&stockNo={stock_no}"
         headers = {
             "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36"
         }
-        r = requests.get(url, headers=headers, timeout=12) # generous timeout for slow TWSE API
+        r = requests.get(url, headers=headers, timeout=4)
         data = r.json()
         if data.get("stat") == "OK" and data.get("data"):
             trade_date = data["data"][-1][0]
@@ -31,31 +32,84 @@ def get_twse_details(stock_no):
     now = datetime.now(timezone(timedelta(hours=8)))
     return now.strftime("%Y/%m/%d"), "個股"
 
+def error_payload(message, code="unknown_error", clear_stock=False):
+    return {
+        "error": message,
+        "code": code,
+        "clear_stock": clear_stock
+    }
+
+def classify_bsr_failure(soup):
+    page_text = " ".join(soup.get_text(" ", strip=True).split())
+    lower_text = page_text.lower()
+
+    no_data_keywords = ("查無", "無資料", "無此", "沒有資料", "無交易", "不存在", "證券代號錯誤")
+    if any(word in page_text for word in no_data_keywords):
+        return error_payload(
+            "查詢不到資料：證交所沒有回傳此股票今日分點交易資料，已清空股票代碼方便重新輸入。",
+            "no_data",
+            True
+        )
+
+    captcha_keywords = ("驗證碼錯誤", "驗證碼輸入有誤", "驗證碼不符", "驗證碼有誤", "檢查碼錯誤")
+    if any(word in page_text for word in captcha_keywords):
+        return error_payload(
+            "驗證碼錯誤：證交所未接受這組驗證碼，請確認圖片內容後重新輸入。股票代碼已保留。",
+            "captcha_invalid",
+            False
+        )
+
+    if "captcha" in lower_text and any(word in lower_text for word in ("error", "invalid", "wrong")):
+        return error_payload(
+            "驗證碼錯誤：證交所未接受這組驗證碼，請重新輸入。股票代碼已保留。",
+            "captcha_invalid",
+            False
+        )
+
+    return error_payload(
+        "證交所沒有提供 CSV 下載連結：可能是驗證碼錯誤、股票代碼無資料，或證交所頁面暫時異常。",
+        "download_link_missing",
+        False
+    )
+
 # Background worker to handle BSR submit and download
 def download_bsr_data(session, params, captcha_code, stock_no):
     try:
+        params = params.copy()
         params['CaptchaControl1'] = captcha_code
         params['TextBox_Stkno'] = stock_no
         
         # Submit verification query
-        resp = session.post('https://bsr.twse.com.tw/bshtm/bsMenu.aspx', data=params, timeout=15)
+        resp = session.post('https://bsr.twse.com.tw/bshtm/bsMenu.aspx', data=params, timeout=(5, 12))
         if resp.status_code != 200:
-            return False, f"送出查詢失敗 (HTTP {resp.status_code})"
+            return False, error_payload(
+                f"送出查詢失敗：證交所回應 HTTP {resp.status_code}，請稍後再試。",
+                "submit_http_error",
+                False
+            )
             
         soup = BeautifulSoup(resp.text, 'html.parser')
         download_links = soup.select('#HyperLink_DownloadCSV')
         
         if not download_links:
-            return False, "驗證錯誤！驗證碼輸入有誤或今日查無此股票交易資料。"
+            return False, classify_bsr_failure(soup)
             
         # Fetch the CSV transaction details
-        csv_resp = session.get('https://bsr.twse.com.tw/bshtm/bsContent.aspx', timeout=20)
+        csv_resp = session.get('https://bsr.twse.com.tw/bshtm/bsContent.aspx', timeout=(5, 12))
         if csv_resp.status_code != 200:
-            return False, f"下載 CSV 失敗 (HTTP {csv_resp.status_code})"
+            return False, error_payload(
+                f"下載 CSV 失敗：證交所回應 HTTP {csv_resp.status_code}。",
+                "csv_http_error",
+                False
+            )
             
         return True, csv_resp.text
     except Exception as e:
-        return False, f"下載發生連線錯誤: {str(e)}"
+        return False, error_payload(
+            f"下載發生連線錯誤：{str(e)}",
+            "network_error",
+            False
+        )
 
 # Route to fetch new captcha, session cookies, and form parameters from TWSE
 @app.route('/api/captcha', methods=['GET'])
@@ -148,23 +202,22 @@ def analyze():
         })
         session.cookies.update(cookies)
         
-        # --- PARALLEL PERFORMANCE OPTIMIZATION ---
-        # Run BSR download and TWSE details fetch in parallel threads
-        with concurrent.futures.ThreadPoolExecutor(max_workers=2) as executor:
-            future_bsr = executor.submit(download_bsr_data, session, params, captcha_code, stock_no)
-            future_details = executor.submit(get_twse_details, stock_no)
-            
-            # Gather results
-            bsr_success, bsr_result = future_bsr.result()
-            trade_date, stock_name = future_details.result()
+        # Download the heavy CSV first. If captcha or stock data fails, return immediately
+        # instead of waiting for the extra stock-name/date API call.
+        bsr_success, bsr_result = download_bsr_data(session, params, captcha_code, stock_no)
             
         if not bsr_success:
-            return jsonify({"success": False, "error": bsr_result}), 400
+            return jsonify({"success": False, **bsr_result}), 400
+
+        trade_date, stock_name = get_twse_details(stock_no)
             
         # Parse CSV content in-memory
         lines = bsr_result.splitlines()
         if len(lines) < 4:
-            return jsonify({"success": False, "error": "證交所傳回之資料行數不足，無效內容"}), 400
+            return jsonify({
+                "success": False,
+                **error_payload("證交所傳回的 CSV 資料行數不足，無法分析。股票代碼已保留，請重新整理驗證碼後再試。", "invalid_csv", False)
+            }), 400
             
         brokers_data = {}
         reader = csv.reader(lines[3:])
@@ -199,7 +252,10 @@ def analyze():
             process_entry(7, 9, 10)
             
         if not brokers_data:
-            return jsonify({"success": False, "error": "無有效交易分點數據"}), 400
+            return jsonify({
+                "success": False,
+                **error_payload("CSV 內沒有有效交易分點數據，可能是證交所當日沒有提供可分析內容。已清空股票代碼方便重新輸入。", "no_valid_broker_data", True)
+            }), 400
             
         # Compute sheet ranks (張數)
         net_buyers = []

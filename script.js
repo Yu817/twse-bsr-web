@@ -31,9 +31,34 @@ document.addEventListener('DOMContentLoaded', () => {
         }
     }
 
+    function refreshCaptchaAfterFailure(delay = 900) {
+        window.setTimeout(() => {
+            fetchNewCaptcha();
+        }, delay);
+    }
+
+    function getFailureStatus(data, fallbackMessage) {
+        const message = data.error || fallbackMessage;
+        const code = data.code || 'unknown_error';
+
+        if (code === 'captcha_invalid') {
+            return `${message} 已保留股票代碼，並準備更新驗證碼。`;
+        }
+
+        if (data.clear_stock) {
+            return `${message} 股票代碼已清空，並準備更新驗證碼。`;
+        }
+
+        if (code === 'download_link_missing') {
+            return `${message} 已保留股票代碼，請用新的驗證碼再試一次。`;
+        }
+
+        return `${message} 已保留股票代碼，稍後會更新驗證碼。`;
+    }
+
     // 1. Fetch Captcha from stateless serverless backend
     async function fetchNewCaptcha() {
-        logStatus('正在獲取驗證碼與安全憑證...');
+        logStatus('正在連線證交所取得驗證碼、表單安全參數與 Cookie...');
         captchaImgContainer.innerHTML = '<span class="placeholder-text"><i class="fa-solid fa-spinner fa-spin"></i> 載入中...</span>';
         captchaCodeInput.value = '';
         
@@ -52,16 +77,16 @@ document.addEventListener('DOMContentLoaded', () => {
                 // Show OCR result if successful
                 if (data.ocr_code) {
                     captchaCodeInput.value = data.ocr_code;
-                    logStatus('驗證碼獲取與自動 OCR 辨識成功！', 'ready');
+                    logStatus(`驗證碼已更新，OCR 辨識為 ${data.ocr_code}。請確認後送出查詢。`, 'ready');
                 } else {
-                    logStatus('驗證碼獲取成功！請手動輸入驗證碼後分析。');
+                    logStatus('驗證碼已更新，但 OCR 未辨識成功。請手動輸入圖片中的 5 位數驗證碼。');
                 }
             } else {
-                logStatus(`取得失敗: ${data.error || '未知錯誤'}`, 'error');
+                logStatus(`驗證碼取得失敗: ${data.error || '未知錯誤'}。請稍後再重新整理驗證碼。`, 'error');
                 captchaImgContainer.innerHTML = '<span class="placeholder-text" style="color: #ef4444;">下載失敗</span>';
             }
         } catch (e) {
-            logStatus(`取得失敗: ${e.message}`, 'error');
+            logStatus(`驗證碼取得失敗: ${e.message}。可能是網路或證交所連線暫時異常。`, 'error');
             captchaImgContainer.innerHTML = '<span class="placeholder-text" style="color: #ef4444;">下載失敗</span>';
         }
     }
@@ -72,18 +97,18 @@ document.addEventListener('DOMContentLoaded', () => {
         const captchaCode = captchaCodeInput.value.trim();
 
         if (!stockNo) {
-            logStatus('錯誤: 請輸入正確的股票代碼！', 'error');
+            logStatus('輸入錯誤：股票代碼是空的，請輸入上市股票代碼後再查詢。', 'error');
             return;
         }
         if (!captchaCode) {
-            logStatus('錯誤: 請輸入驗證碼！', 'error');
+            logStatus('輸入錯誤：驗證碼是空的，請輸入圖片中的 5 位數驗證碼。', 'error');
             return;
         }
 
         // Add loading state
         startAnalyzeBtn.classList.add('loading');
         startAnalyzeBtn.disabled = true;
-        logStatus('正在向證交所發送查詢並下載交易細節...', 'pending');
+        logStatus(`已送出 ${stockNo}，正在驗證驗證碼並下載證交所分點 CSV...`, 'pending');
 
         try {
             const resp = await fetch('/api/analyze', {
@@ -102,7 +127,7 @@ document.addEventListener('DOMContentLoaded', () => {
             const data = await resp.json();
 
             if (data.success) {
-                logStatus('分析完成！已成功整合分點排行。', 'ready');
+                logStatus(`分析完成：已下載 ${stockNo} 的分點 CSV，並完成買賣超排行整理。`, 'ready');
                 renderResults(data.buyers, data.sellers);
                 
                 // --- USER REQUEST UPGRADE 1: Show Stock Code and Stock Name ---
@@ -115,22 +140,20 @@ document.addEventListener('DOMContentLoaded', () => {
                     tradeDateBadge.style.display = 'flex';
                 }
                 
-                // Clear the stock entry so the user can easily key in a new one
+                // Clear the stock entry after a completed lookup.
                 stockNoInput.value = '';
                 // Automatically fetch and refresh a new captcha
                 fetchNewCaptcha();
             } else {
-                logStatus(`查詢失敗: ${data.error || '驗證碼錯誤或無交易資料'}`, 'error');
-                
-                // Clear inputs and auto-refresh captcha even on failed submission
-                stockNoInput.value = '';
-                logStatus('查詢失敗。正為您自動清空並更新驗證碼...', 'error');
-                setTimeout(fetchNewCaptcha, 1500);
+                if (data.clear_stock) {
+                    stockNoInput.value = '';
+                }
+                logStatus(getFailureStatus(data, '查詢失敗：證交所沒有回傳可分析資料。'), 'error');
+                refreshCaptchaAfterFailure();
             }
         } catch (e) {
-            logStatus(`查詢失敗: ${e.message}`, 'error');
-            stockNoInput.value = '';
-            setTimeout(fetchNewCaptcha, 1500);
+            logStatus(`查詢失敗：${e.message}。可能是網路中斷或伺服器暫時無回應；股票代碼已保留，稍後會更新驗證碼。`, 'error');
+            refreshCaptchaAfterFailure();
         } finally {
             startAnalyzeBtn.classList.remove('loading');
             startAnalyzeBtn.disabled = false;
