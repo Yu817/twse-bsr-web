@@ -10,27 +10,25 @@ from functools import lru_cache
 
 app = Flask(__name__)
 
-# Helper to fetch both official trading date and stock name from TWSE STOCK_DAY API
+# Helper to fetch stock name via fast autocomplete suggestion API
 @lru_cache(maxsize=256)
-def get_twse_details(stock_no):
+def get_twse_details_fast(stock_no):
     try:
-        url = f"https://www.twse.com.tw/exchangeReport/STOCK_DAY?response=json&stockNo={stock_no}"
+        url = f"https://www.twse.com.tw/zh/api/codeQuery?query={stock_no}"
         headers = {
             "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36"
         }
-        r = requests.get(url, headers=headers, timeout=4)
+        r = requests.get(url, headers=headers, timeout=3)
         data = r.json()
-        if data.get("stat") == "OK" and data.get("data"):
-            trade_date = data["data"][-1][0]
-            parts = data.get("title", "").split()
-            stock_name = parts[2] if len(parts) >= 3 else "個股"
-            return trade_date, stock_name
+        suggestions = data.get("suggestions", [])
+        if suggestions:
+            # First suggestion is usually "2330\t台積電"
+            parts = suggestions[0].split('\t')
+            if len(parts) >= 2:
+                return parts[1].strip()
     except Exception:
         pass
-    # Fallback to local Taiwan time and default name if TWSE API fails or rate-limits
-    from datetime import datetime, timedelta, timezone
-    now = datetime.now(timezone(timedelta(hours=8)))
-    return now.strftime("%Y/%m/%d"), "個股"
+    return "個股"
 
 def error_payload(message, code="unknown_error", clear_stock=False):
     return {
@@ -86,13 +84,20 @@ def download_bsr_data(session, params, captcha_code, stock_no):
                 f"送出查詢失敗：證交所回應 HTTP {resp.status_code}，請稍後再試。",
                 "submit_http_error",
                 False
-            )
+            ), None
             
         soup = BeautifulSoup(resp.text, 'html.parser')
+        
+        # Extract trade date directly from the parsed page to save one network request
+        trade_date = None
+        date_node = soup.select_one('#Label_Date')
+        if date_node:
+            trade_date = date_node.get_text(strip=True)
+            
         download_links = soup.select('#HyperLink_DownloadCSV')
         
         if not download_links:
-            return False, classify_bsr_failure(soup)
+            return False, classify_bsr_failure(soup), None
             
         # Fetch the CSV transaction details
         csv_resp = session.get('https://bsr.twse.com.tw/bshtm/bsContent.aspx', timeout=(5, 12))
@@ -101,15 +106,15 @@ def download_bsr_data(session, params, captcha_code, stock_no):
                 f"下載 CSV 失敗：證交所回應 HTTP {csv_resp.status_code}。",
                 "csv_http_error",
                 False
-            )
+            ), None
             
-        return True, csv_resp.text
+        return True, csv_resp.text, trade_date
     except Exception as e:
         return False, error_payload(
             f"下載發生連線錯誤：{str(e)}",
             "network_error",
             False
-        )
+        ), None
 
 # Route to fetch new captcha, session cookies, and form parameters from TWSE
 @app.route('/api/captcha', methods=['GET'])
@@ -202,14 +207,22 @@ def analyze():
         })
         session.cookies.update(cookies)
         
-        # Download the heavy CSV first. If captcha or stock data fails, return immediately
-        # instead of waiting for the extra stock-name/date API call.
-        bsr_success, bsr_result = download_bsr_data(session, params, captcha_code, stock_no)
+        # Parallelize download_bsr_data and get_twse_details_fast
+        from concurrent.futures import ThreadPoolExecutor
+        with ThreadPoolExecutor(max_workers=2) as executor:
+            future_bsr = executor.submit(download_bsr_data, session, params, captcha_code, stock_no)
+            future_name = executor.submit(get_twse_details_fast, stock_no)
             
-        if not bsr_success:
-            return jsonify({"success": False, **bsr_result}), 400
-
-        trade_date, stock_name = get_twse_details(stock_no)
+            bsr_success, bsr_result, trade_date = future_bsr.result()
+            if not bsr_success:
+                return jsonify({"success": False, **bsr_result}), 400
+                
+            stock_name = future_name.result()
+            
+        if not trade_date:
+            from datetime import datetime, timedelta, timezone
+            now = datetime.now(timezone(timedelta(hours=8)))
+            trade_date = now.strftime("%Y/%m/%d")
             
         # Parse CSV content in-memory
         lines = bsr_result.splitlines()
