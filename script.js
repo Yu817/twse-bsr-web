@@ -14,20 +14,87 @@ document.addEventListener('DOMContentLoaded', () => {
     const statusConsole = document.getElementById('statusConsole');
     const statusBullet = statusConsole.querySelector('.status-bullet');
     const statusText = statusConsole.querySelector('.status-text');
+    const progressBarFill = document.getElementById('progressBarFill');
+    const statusPercent = document.getElementById('statusPercent');
     const buyersTableBody = document.querySelector('#buyersTable tbody');
     const sellersTableBody = document.querySelector('#sellersTable tbody');
     const tradeDateBadge = document.getElementById('tradeDateBadge');
     const tradeDateSpan = document.getElementById('tradeDate');
     const resultsTitle = document.getElementById('resultsTitle');
 
-    // Helper to log status in UI
+    let progressInterval = null;
+    let currentPercent = 0;
+
+    // Set progress bar width and style based on state
+    function setProgress(percent, type = 'pending') {
+        currentPercent = percent;
+        if (progressBarFill) {
+            progressBarFill.style.width = `${percent}%`;
+            progressBarFill.className = 'progress-bar-fill';
+            progressBarFill.classList.add(type);
+        }
+        if (statusPercent) {
+            statusPercent.textContent = `${Math.round(percent)}%`;
+            if (type === 'ready') {
+                statusPercent.style.color = 'var(--green-accent)';
+            } else if (type === 'error') {
+                statusPercent.style.color = 'var(--red-accent)';
+            } else {
+                statusPercent.style.color = 'var(--text-secondary)';
+            }
+        }
+    }
+
+    // Start a simulated progress bar animation up to a target max percent
+    function startSimulatedProgress(duration, maxPercent = 90, onProgressUpdate = null) {
+        if (progressInterval) clearInterval(progressInterval);
+        setProgress(0, 'pending');
+        
+        const startTime = Date.now();
+        progressInterval = setInterval(() => {
+            const elapsed = Date.now() - startTime;
+            let percent = (elapsed / duration) * maxPercent;
+            if (percent > maxPercent) {
+                percent = maxPercent;
+                clearInterval(progressInterval);
+            }
+            setProgress(percent, 'pending');
+            if (onProgressUpdate) {
+                onProgressUpdate(percent);
+            }
+        }, 80);
+    }
+
+    // Instantly complete progress to 100% (ready) or highlight errors
+    function stopProgress(success = true, message = '') {
+        if (progressInterval) clearInterval(progressInterval);
+        if (success) {
+            setProgress(100, 'ready');
+            if (message) {
+                statusText.textContent = `系統狀態: ${message}`;
+                statusBullet.className = 'status-bullet ready';
+            }
+        } else {
+            setProgress(currentPercent === 0 ? 100 : currentPercent, 'error');
+            if (message) {
+                statusText.textContent = `系統狀態: ${message}`;
+                statusBullet.className = 'status-bullet error';
+            }
+        }
+    }
+
+    // Helper to log status in UI (maintained for compatibility)
     function logStatus(text, type = 'pending') {
         statusText.textContent = `系統狀態: ${text}`;
         statusBullet.className = 'status-bullet'; // reset
         if (type === 'ready') {
             statusBullet.classList.add('ready');
+            setProgress(100, 'ready');
         } else if (type === 'error') {
             statusBullet.classList.add('error');
+            setProgress(currentPercent === 0 ? 100 : currentPercent, 'error');
+        } else {
+            setProgress(currentPercent, 'pending');
         }
     }
 
@@ -58,7 +125,15 @@ document.addEventListener('DOMContentLoaded', () => {
 
     // 1. Fetch Captcha from stateless serverless backend
     async function fetchNewCaptcha() {
-        logStatus('正在連線證交所取得驗證碼、表單安全參數與 Cookie...');
+        startSimulatedProgress(1200, 90, (percent) => {
+            if (percent < 40) {
+                statusText.textContent = '系統狀態: 正在連線證交所取得安全參數...';
+            } else {
+                statusText.textContent = '系統狀態: 正在下載驗證碼圖片...';
+            }
+            statusBullet.className = 'status-bullet';
+        });
+        
         captchaImgContainer.innerHTML = '<span class="placeholder-text"><i class="fa-solid fa-spinner fa-spin"></i> 載入中...</span>';
         captchaCodeInput.value = '';
         
@@ -77,17 +152,17 @@ document.addEventListener('DOMContentLoaded', () => {
                 // Show OCR result if successful
                 if (data.ocr_code) {
                     captchaCodeInput.value = data.ocr_code;
-                    logStatus(`驗證碼已更新，OCR 辨識為 ${data.ocr_code}。請確認後送出查詢。`, 'ready');
+                    stopProgress(true, `驗證碼已更新，OCR 辨識為 ${data.ocr_code}。請確認後送出查詢。`);
                 } else {
-                    logStatus('驗證碼已更新，但 OCR 未辨識成功。請手動輸入圖片中的 5 位數驗證碼。');
+                    stopProgress(true, '驗證碼已更新，但 OCR 未辨識成功。請手動輸入圖片中的 5 位數驗證碼。');
                 }
             } else {
-                logStatus(`驗證碼取得失敗: ${data.error || '未知錯誤'}。請稍後再重新整理驗證碼。`, 'error');
                 captchaImgContainer.innerHTML = '<span class="placeholder-text" style="color: #ef4444;">下載失敗</span>';
+                stopProgress(false, `驗證碼取得失敗: ${data.error || '未知錯誤'}。請稍後再重新整理驗證碼。`);
             }
         } catch (e) {
-            logStatus(`驗證碼取得失敗: ${e.message}。可能是網路或證交所連線暫時異常。`, 'error');
             captchaImgContainer.innerHTML = '<span class="placeholder-text" style="color: #ef4444;">下載失敗</span>';
+            stopProgress(false, `驗證碼取得失敗: ${e.message}。可能是網路或證交所連線暫時異常。`);
         }
     }
 
@@ -97,18 +172,29 @@ document.addEventListener('DOMContentLoaded', () => {
         const captchaCode = captchaCodeInput.value.trim();
 
         if (!stockNo) {
-            logStatus('輸入錯誤：股票代碼是空的，請輸入上市股票代碼後再查詢。', 'error');
+            stopProgress(false, '輸入錯誤：股票代碼是空的，請輸入上市股票代碼後再查詢。');
             return;
         }
         if (!captchaCode) {
-            logStatus('輸入錯誤：驗證碼是空的，請輸入圖片中的 5 位數驗證碼。', 'error');
+            stopProgress(false, '輸入錯誤：驗證碼是空的，請輸入圖片中的 5 位數驗證碼。');
             return;
         }
 
         // Add loading state
         startAnalyzeBtn.classList.add('loading');
         startAnalyzeBtn.disabled = true;
-        logStatus(`已送出 ${stockNo}，正在驗證驗證碼並下載證交所分點 CSV...`, 'pending');
+        
+        // Start simulated progress for download/analyze (takes ~4-8 seconds usually)
+        startSimulatedProgress(5000, 92, (percent) => {
+            if (percent < 30) {
+                statusText.textContent = `系統狀態: 已送出 ${stockNo}，正在向證交所進行查詢安全認證...`;
+            } else if (percent < 75) {
+                statusText.textContent = `系統狀態: 正在下載分點交易明細 CSV...`;
+            } else {
+                statusText.textContent = `系統狀態: 正在整理並統計分點買賣超排行榜...`;
+            }
+            statusBullet.className = 'status-bullet';
+        });
 
         try {
             const resp = await fetch('/api/analyze', {
@@ -127,7 +213,6 @@ document.addEventListener('DOMContentLoaded', () => {
             const data = await resp.json();
 
             if (data.success) {
-                logStatus(`分析完成：已下載 ${stockNo} 的分點 CSV，並完成買賣超排行整理。`, 'ready');
                 renderResults(data.buyers, data.sellers);
                 
                 // --- USER REQUEST UPGRADE 1: Show Stock Code and Stock Name ---
@@ -142,18 +227,22 @@ document.addEventListener('DOMContentLoaded', () => {
                 
                 // Clear the stock entry after a completed lookup.
                 stockNoInput.value = '';
-                // Automatically fetch and refresh a new captcha
-                fetchNewCaptcha();
+                stopProgress(true, `分析完成：已下載 ${stockNo} 的分點 CSV，並完成買賣超排行整理。`);
+                
+                // Wait 2 seconds so the user can see the 100% bar before fetching new captcha
+                window.setTimeout(() => {
+                    fetchNewCaptcha();
+                }, 2000);
             } else {
                 if (data.clear_stock) {
                     stockNoInput.value = '';
                 }
-                logStatus(getFailureStatus(data, '查詢失敗：證交所沒有回傳可分析資料。'), 'error');
-                refreshCaptchaAfterFailure();
+                stopProgress(false, getFailureStatus(data, '查詢失敗：證交所沒有回傳可分析資料。'));
+                refreshCaptchaAfterFailure(2500);
             }
         } catch (e) {
-            logStatus(`查詢失敗：${e.message}。可能是網路中斷或伺服器暫時無回應；股票代碼已保留，稍後會更新驗證碼。`, 'error');
-            refreshCaptchaAfterFailure();
+            stopProgress(false, `查詢失敗：${e.message}。可能是網路中斷或伺服器暫時無回應。`);
+            refreshCaptchaAfterFailure(2500);
         } finally {
             startAnalyzeBtn.classList.remove('loading');
             startAnalyzeBtn.disabled = false;

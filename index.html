@@ -66,8 +66,16 @@
 
                 <!-- Status Console -->
                 <div class="status-console" id="statusConsole">
-                    <div class="status-bullet"></div>
-                    <span class="status-text">系統狀態: 載入中...</span>
+                    <div class="status-header">
+                        <div class="status-left">
+                            <div class="status-bullet"></div>
+                            <span class="status-text">系統狀態: 載入中...</span>
+                        </div>
+                        <span class="status-percent" id="statusPercent">0%</span>
+                    </div>
+                    <div class="progress-bar-track">
+                        <div class="progress-bar-fill" id="progressBarFill" style="width: 0%;"></div>
+                    </div>
                 </div>
             </section>
 
