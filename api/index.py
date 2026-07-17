@@ -160,15 +160,16 @@ def get_captcha():
         
         # Call the user's custom OCR server to automate recognition
         ocr_code = ""
-        try:
-            ocr_url = "http://yustudio.xyz:40010/ocr"
-            ocr_resp = requests.post(ocr_url, json={"image": captcha_b64}, timeout=8)
-            if ocr_resp.status_code == 200:
-                res_json = ocr_resp.json()
-                if res_json.get("success"):
-                    ocr_code = res_json.get("result", "").strip()
-        except Exception:
-            pass
+        ocr_url = os.environ.get("OCR_API_URL", "http://yustudio.xyz:40010/ocr")
+        if ocr_url:
+            try:
+                ocr_resp = requests.post(ocr_url, json={"image": captcha_b64}, timeout=8)
+                if ocr_resp.status_code == 200:
+                    res_json = ocr_resp.json()
+                    if res_json.get("success"):
+                        ocr_code = res_json.get("result", "").strip()
+            except Exception:
+                pass
             
         # Serialize cookies to pass back to stateless frontend
         cookies = session.cookies.get_dict()
