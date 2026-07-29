@@ -45,7 +45,7 @@ document.addEventListener('DOMContentLoaded', () => {
         }
     }
 
-    // Start a simulated progress bar animation up to a target max percent
+    // Start a simulated progress bar animation up to maxPercent, then smoothly creep forward
     function startSimulatedProgress(duration, maxPercent = 90, onProgressUpdate = null) {
         if (progressInterval) clearInterval(progressInterval);
         setProgress(0, 'pending');
@@ -53,11 +53,15 @@ document.addEventListener('DOMContentLoaded', () => {
         const startTime = Date.now();
         progressInterval = setInterval(() => {
             const elapsed = Date.now() - startTime;
-            let percent = (elapsed / duration) * maxPercent;
-            if (percent > maxPercent) {
-                percent = maxPercent;
-                clearInterval(progressInterval);
+            let percent;
+            if (elapsed < duration) {
+                percent = (elapsed / duration) * maxPercent;
+            } else {
+                // Decay mode: asymptotically creep from maxPercent up towards 98% so bar never freezes
+                const extraSecs = (elapsed - duration) / 1000;
+                percent = maxPercent + ((98 - maxPercent) * (1 - Math.exp(-extraSecs / 6)));
             }
+            percent = Math.min(percent, 98.5);
             setProgress(percent, 'pending');
             if (onProgressUpdate) {
                 onProgressUpdate(percent);
@@ -185,13 +189,13 @@ document.addEventListener('DOMContentLoaded', () => {
         startAnalyzeBtn.disabled = true;
         
         // Start simulated progress for download/analyze (takes ~4-8 seconds usually)
-        startSimulatedProgress(5000, 92, (percent) => {
+        startSimulatedProgress(6000, 85, (percent) => {
             if (percent < 30) {
-                statusText.textContent = `系統狀態: 已送出 ${stockNo}，正在向證交所進行查詢安全認證...`;
-            } else if (percent < 75) {
-                statusText.textContent = `系統狀態: 正在下載分點交易明細 CSV...`;
+                statusText.textContent = `系統狀態: 已送出 ${stockNo}，正在向證交所進行驗證與查詢...`;
+            } else if (percent < 82) {
+                statusText.textContent = `系統狀態: 正在下載 ${stockNo} 分點明細 CSV (等待證交所回應)...`;
             } else {
-                statusText.textContent = `系統狀態: 正在整理並統計分點買賣超排行榜...`;
+                statusText.textContent = `系統狀態: 證交所已回傳，正在統計分點買賣超與成交均價...`;
             }
             statusBullet.className = 'status-bullet';
         });
