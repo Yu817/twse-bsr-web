@@ -30,6 +30,43 @@ def get_twse_details_fast(stock_no):
         pass
     return "個股"
 
+# Helper to fetch stock closing price, change amount, and change percentage
+def get_stock_price_info(stock_no):
+    try:
+        url = f"https://mis.twse.com.tw/stock/api/getStockInfo.jsp?ex_ch=tse_{stock_no}.tw|otc_{stock_no}.tw"
+        headers = {
+            "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36"
+        }
+        r = requests.get(url, headers=headers, timeout=3)
+        if r.status_code == 200:
+            data = r.json()
+            msg_array = data.get("msgArray", [])
+            for item in msg_array:
+                z = item.get("z", "-")
+                y = item.get("y", "-")
+                
+                if z == "-" or not z:
+                    b_list = item.get("b", "").split("_")
+                    a_list = item.get("a", "").split("_")
+                    if b_list and b_list[0] and b_list[0] != "-":
+                        z = b_list[0]
+                    elif a_list and a_list[0] and a_list[0] != "-":
+                        z = a_list[0]
+                
+                if z != "-" and y != "-" and float(y) > 0:
+                    close_price = float(z)
+                    yest_close = float(y)
+                    diff = close_price - yest_close
+                    pct = (diff / yest_close) * 100
+                    return {
+                        "close": round(close_price, 2),
+                        "diff": round(diff, 2),
+                        "pct": round(pct, 2)
+                    }
+    except Exception:
+        pass
+    return None
+
 def error_payload(message, code="unknown_error", clear_stock=False):
     return {
         "error": message,
@@ -211,11 +248,12 @@ def analyze():
         })
         session.cookies.update(cookies)
         
-        # Parallelize download_bsr_data and get_twse_details_fast
+        # Parallelize download_bsr_data, get_twse_details_fast, and get_stock_price_info
         from concurrent.futures import ThreadPoolExecutor
-        with ThreadPoolExecutor(max_workers=2) as executor:
+        with ThreadPoolExecutor(max_workers=3) as executor:
             future_bsr = executor.submit(download_bsr_data, session, params, captcha_code, stock_no)
             future_name = executor.submit(get_twse_details_fast, stock_no)
+            future_price = executor.submit(get_stock_price_info, stock_no)
             
             bsr_success, bsr_result, trade_date, stock_name = future_bsr.result()
             if not bsr_success:
@@ -223,6 +261,8 @@ def analyze():
                 
             if not stock_name:
                 stock_name = future_name.result()
+                
+            price_info = future_price.result()
             
         if not trade_date:
             from datetime import datetime, timedelta, timezone
@@ -297,13 +337,20 @@ def analyze():
         net_buyers.sort(key=lambda x: x["val"], reverse=True)
         net_sellers.sort(key=lambda x: x["val"], reverse=True)
         
-        return jsonify({
+        resp_data = {
             "success": True,
             "buyers": net_buyers,
             "sellers": net_sellers,
             "trade_date": trade_date,
             "stock_name": stock_name
-        })
+        }
+        
+        if price_info:
+            resp_data["stock_price"] = price_info["close"]
+            resp_data["price_diff"] = price_info["diff"]
+            resp_data["price_pct"] = price_info["pct"]
+
+        return jsonify(resp_data)
         
     except Exception as e:
         return jsonify({"success": False, "error": f"解析過程出錯: {str(e)}"}), 500

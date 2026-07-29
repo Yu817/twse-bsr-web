@@ -84,8 +84,15 @@
             <section class="results-card glass-panel">
                 <div class="results-header-row">
                     <h2 class="panel-title" id="resultsTitle"><i class="fa-solid fa-chart-simple"></i> 統計結果分析</h2>
-                    <div id="tradeDateBadge" class="trade-date-badge" style="display: none;">
-                        <i class="fa-solid fa-calendar-days"></i> 資料日期: <span id="tradeDate">-</span>
+                    <div class="header-badges">
+                        <div id="stockPriceBadge" class="stock-price-badge" style="display: none;">
+                            <span class="price-label">收盤價</span>
+                            <span id="stockClosePrice" class="price-val">-</span>
+                            <span id="stockPriceChange" class="price-change">-</span>
+                        </div>
+                        <div id="tradeDateBadge" class="trade-date-badge" style="display: none;">
+                            <i class="fa-solid fa-calendar-days"></i> 資料日期: <span id="tradeDate">-</span>
+                        </div>
                     </div>
                 </div>
                 

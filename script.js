@@ -20,6 +20,9 @@ document.addEventListener('DOMContentLoaded', () => {
     const sellersTableBody = document.querySelector('#sellersTable tbody');
     const tradeDateBadge = document.getElementById('tradeDateBadge');
     const tradeDateSpan = document.getElementById('tradeDate');
+    const stockPriceBadge = document.getElementById('stockPriceBadge');
+    const stockClosePrice = document.getElementById('stockClosePrice');
+    const stockPriceChange = document.getElementById('stockPriceChange');
     const resultsTitle = document.getElementById('resultsTitle');
 
     let progressInterval = null;
@@ -227,6 +230,30 @@ document.addEventListener('DOMContentLoaded', () => {
                 if (data.trade_date) {
                     tradeDateSpan.textContent = data.trade_date;
                     tradeDateBadge.style.display = 'flex';
+                }
+                
+                // Show stock closing price and change percentage if available
+                if (data.stock_price !== undefined && data.stock_price !== null) {
+                    const priceFormatted = data.stock_price.toLocaleString('zh-TW', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+                    stockClosePrice.textContent = priceFormatted;
+                    
+                    const diff = data.price_diff || 0;
+                    const pct = data.price_pct || 0;
+                    
+                    stockPriceBadge.className = 'stock-price-badge';
+                    if (diff > 0) {
+                        stockPriceBadge.classList.add('up');
+                        stockPriceChange.textContent = `▲ +${diff.toFixed(2)} (+${pct.toFixed(2)}%)`;
+                    } else if (diff < 0) {
+                        stockPriceBadge.classList.add('down');
+                        stockPriceChange.textContent = `▼ ${diff.toFixed(2)} (${pct.toFixed(2)}%)`;
+                    } else {
+                        stockPriceBadge.classList.add('flat');
+                        stockPriceChange.textContent = `0.00 (0.00%)`;
+                    }
+                    stockPriceBadge.style.display = 'flex';
+                } else {
+                    stockPriceBadge.style.display = 'none';
                 }
                 
                 // Clear the stock entry after a completed lookup.

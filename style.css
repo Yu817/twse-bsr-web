@@ -160,6 +160,64 @@ body {
     padding-bottom: 12px;
 }
 
+.header-badges {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    flex-wrap: wrap;
+}
+
+.stock-price-badge {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    padding: 6px 14px;
+    border-radius: 8px;
+    font-size: 0.85rem;
+    font-weight: 600;
+    backdrop-filter: blur(8px);
+    transition: all 0.3s ease;
+}
+
+.stock-price-badge .price-label {
+    font-size: 0.78rem;
+    color: var(--text-secondary);
+    font-weight: 500;
+}
+
+.stock-price-badge .price-val {
+    font-family: 'Outfit', sans-serif;
+    font-weight: 700;
+    font-size: 0.95rem;
+}
+
+.stock-price-badge .price-change {
+    font-family: 'Outfit', sans-serif;
+    font-weight: 600;
+    font-size: 0.85rem;
+}
+
+/* Taiwan Stock Market Colors: Up = Red (#ef4444), Down = Green (#10b981), Flat = Gray */
+.stock-price-badge.up {
+    background: rgba(239, 68, 68, 0.12);
+    border: 1px solid rgba(239, 68, 68, 0.3);
+    color: #f87171;
+    box-shadow: 0 0 10px rgba(239, 68, 68, 0.12);
+}
+
+.stock-price-badge.down {
+    background: rgba(16, 185, 129, 0.12);
+    border: 1px solid rgba(16, 185, 129, 0.3);
+    color: #34d399;
+    box-shadow: 0 0 10px rgba(16, 185, 129, 0.12);
+}
+
+.stock-price-badge.flat {
+    background: rgba(156, 163, 175, 0.12);
+    border: 1px solid rgba(156, 163, 175, 0.3);
+    color: #d1d5db;
+}
+
 .trade-date-badge {
     display: flex;
     align-items: center;
