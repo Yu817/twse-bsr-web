@@ -239,13 +239,18 @@ def analyze():
             if not row:
                 continue
                 
-            def process_entry(broker_col_idx, buy_col_idx, sell_col_idx):
-                if len(row) <= max(broker_col_idx, buy_col_idx, sell_col_idx):
+            def process_entry(broker_col_idx, price_col_idx, buy_col_idx, sell_col_idx):
+                if len(row) <= max(broker_col_idx, price_col_idx, buy_col_idx, sell_col_idx):
                     return
                 broker = row[broker_col_idx].strip()
                 if not broker or broker in ("券商", "序號", "價格", "買進股數", "賣出股數"):
                     return
                 
+                try:
+                    price_val = float(row[price_col_idx].replace(',', ''))
+                except ValueError:
+                    price_val = 0.0
+
                 try:
                     buy_val = int(float(row[buy_col_idx].replace(',', '')))
                 except ValueError:
@@ -257,13 +262,15 @@ def analyze():
                     sell_val = 0
                 
                 if broker not in brokers_data:
-                    brokers_data[broker] = {'buy': 0, 'sell': 0}
+                    brokers_data[broker] = {'buy': 0, 'sell': 0, 'buy_amt': 0.0, 'sell_amt': 0.0}
                 
                 brokers_data[broker]['buy'] += buy_val
                 brokers_data[broker]['sell'] += sell_val
+                brokers_data[broker]['buy_amt'] += price_val * buy_val
+                brokers_data[broker]['sell_amt'] += price_val * sell_val
 
-            process_entry(1, 3, 4)
-            process_entry(7, 9, 10)
+            process_entry(1, 2, 3, 4)
+            process_entry(7, 8, 9, 10)
             
         if not brokers_data:
             return jsonify({
@@ -281,9 +288,11 @@ def analyze():
             net = buy_sheets - sell_sheets
             
             if net > 0:
-                net_buyers.append({"broker": broker, "val": round(net, 2)})
+                avg_price = round(info['buy_amt'] / info['buy'], 2) if info['buy'] > 0 else 0.0
+                net_buyers.append({"broker": broker, "val": round(net, 2), "price": avg_price})
             elif net < 0:
-                net_sellers.append({"broker": broker, "val": round(-net, 2)})
+                avg_price = round(info['sell_amt'] / info['sell'], 2) if info['sell'] > 0 else 0.0
+                net_sellers.append({"broker": broker, "val": round(-net, 2), "price": avg_price})
                 
         # Sort desc
         net_buyers.sort(key=lambda x: x["val"], reverse=True)

@@ -505,14 +505,20 @@ tbody tr:hover {
     font-size: 0.85rem;
 }
 
-.buyers-panel tbody tr td:last-child {
+.buyers-panel tbody tr td:nth-child(3) {
     color: var(--green-accent);
     font-weight: 600;
 }
 
-.sellers-panel tbody tr td:last-child {
+.sellers-panel tbody tr td:nth-child(3) {
     color: var(--red-accent);
     font-weight: 600;
+}
+
+.buyers-panel tbody tr td:nth-child(4),
+.sellers-panel tbody tr td:nth-child(4) {
+    color: #e2e8f0;
+    font-weight: 500;
 }
 
 /* Footer & Decorative elements */

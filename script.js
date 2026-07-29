@@ -256,28 +256,32 @@ document.addEventListener('DOMContentLoaded', () => {
         sellersTableBody.innerHTML = '';
 
         if (buyers.length === 0) {
-            buyersTableBody.innerHTML = '<tr class="empty-row"><td colspan="3">無任何買超資料</td></tr>';
+            buyersTableBody.innerHTML = '<tr class="empty-row"><td colspan="4">無任何買超資料</td></tr>';
         } else {
             buyers.forEach((b, index) => {
                 const tr = document.createElement('tr');
+                const priceStr = (b.price !== undefined && b.price !== null) ? b.price.toFixed(2) : '-';
                 tr.innerHTML = `
                     <td>${index + 1}</td>
                     <td>${b.broker}</td>
                     <td style="text-align: right; font-family: 'Outfit'; font-weight: 600;">+${b.val.toFixed(2)}</td>
+                    <td style="text-align: right; font-family: 'Outfit'; font-weight: 500;">${priceStr}</td>
                 `;
                 buyersTableBody.appendChild(tr);
             });
         }
 
         if (sellers.length === 0) {
-            sellersTableBody.innerHTML = '<tr class="empty-row"><td colspan="3">無任何賣超資料</td></tr>';
+            sellersTableBody.innerHTML = '<tr class="empty-row"><td colspan="4">無任何賣超資料</td></tr>';
         } else {
             sellers.forEach((s, index) => {
                 const tr = document.createElement('tr');
+                const priceStr = (s.price !== undefined && s.price !== null) ? s.price.toFixed(2) : '-';
                 tr.innerHTML = `
                     <td>${index + 1}</td>
                     <td>${s.broker}</td>
                     <td style="text-align: right; font-family: 'Outfit'; font-weight: 600;">-${s.val.toFixed(2)}</td>
+                    <td style="text-align: right; font-family: 'Outfit'; font-weight: 500;">${priceStr}</td>
                 `;
                 sellersTableBody.appendChild(tr);
             });
