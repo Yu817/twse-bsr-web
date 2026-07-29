@@ -84,20 +84,23 @@ def download_bsr_data(session, params, captcha_code, stock_no):
                 f"送出查詢失敗：證交所回應 HTTP {resp.status_code}，請稍後再試。",
                 "submit_http_error",
                 False
-            ), None
-            
-        soup = BeautifulSoup(resp.text, 'html.parser')
-        
-        # Extract trade date directly from the parsed page to save one network request
+            ), None, None
+
+        # Fast regex extraction of date and stock name directly from returned HTML to avoid extra network calls
         trade_date = None
-        date_node = soup.select_one('#Label_Date')
-        if date_node:
-            trade_date = date_node.get_text(strip=True)
+        stock_name = None
+
+        m_date = re.search(r'id=["\']Label_Date["\'][^>]*>([^<]+)<', resp.text)
+        if m_date:
+            trade_date = m_date.group(1).strip()
+
+        m_name = re.search(r'id=["\']Label_StkName["\'][^>]*>([^<]+)<', resp.text)
+        if m_name:
+            stock_name = m_name.group(1).strip()
             
-        download_links = soup.select('#HyperLink_DownloadCSV')
-        
-        if not download_links:
-            return False, classify_bsr_failure(soup), None
+        if 'HyperLink_DownloadCSV' not in resp.text:
+            soup = BeautifulSoup(resp.text, 'html.parser')
+            return False, classify_bsr_failure(soup), None, None
             
         # Fetch the CSV transaction details
         csv_resp = session.get('https://bsr.twse.com.tw/bshtm/bsContent.aspx', timeout=(5, 12))
@@ -106,15 +109,15 @@ def download_bsr_data(session, params, captcha_code, stock_no):
                 f"下載 CSV 失敗：證交所回應 HTTP {csv_resp.status_code}。",
                 "csv_http_error",
                 False
-            ), None
+            ), None, None
             
-        return True, csv_resp.text, trade_date
+        return True, csv_resp.text, trade_date, stock_name
     except Exception as e:
         return False, error_payload(
             f"下載發生連線錯誤：{str(e)}",
             "network_error",
             False
-        ), None
+        ), None, None
 
 # Route to fetch new captcha, session cookies, and form parameters from TWSE
 @app.route('/api/captcha', methods=['GET'])
@@ -214,18 +217,19 @@ def analyze():
             future_bsr = executor.submit(download_bsr_data, session, params, captcha_code, stock_no)
             future_name = executor.submit(get_twse_details_fast, stock_no)
             
-            bsr_success, bsr_result, trade_date = future_bsr.result()
+            bsr_success, bsr_result, trade_date, stock_name = future_bsr.result()
             if not bsr_success:
                 return jsonify({"success": False, **bsr_result}), 400
                 
-            stock_name = future_name.result()
+            if not stock_name:
+                stock_name = future_name.result()
             
         if not trade_date:
             from datetime import datetime, timedelta, timezone
             now = datetime.now(timezone(timedelta(hours=8)))
             trade_date = now.strftime("%Y/%m/%d")
             
-        # Parse CSV content in-memory
+        # Parse CSV content in-memory (highly optimized)
         lines = bsr_result.splitlines()
         if len(lines) < 4:
             return jsonify({
@@ -235,43 +239,38 @@ def analyze():
             
         brokers_data = {}
         reader = csv.reader(lines[3:])
+        col_indices = ((1, 2, 3, 4), (7, 8, 9, 10))
+        ignore_names = {"券商", "序號", "價格", "買進股數", "賣出股數", ""}
+
         for row in reader:
             if not row:
                 continue
+            row_len = len(row)
+            for b_idx, p_idx, buy_idx, sell_idx in col_indices:
+                if row_len <= sell_idx:
+                    continue
+                broker = row[b_idx].strip()
+                if not broker or broker in ignore_names:
+                    continue
                 
-            def process_entry(broker_col_idx, price_col_idx, buy_col_idx, sell_col_idx):
-                if len(row) <= max(broker_col_idx, price_col_idx, buy_col_idx, sell_col_idx):
-                    return
-                broker = row[broker_col_idx].strip()
-                if not broker or broker in ("券商", "序號", "價格", "買進股數", "賣出股數"):
-                    return
-                
-                try:
-                    price_val = float(row[price_col_idx].replace(',', ''))
-                except ValueError:
-                    price_val = 0.0
+                p_str = row[p_idx]
+                b_str = row[buy_idx]
+                s_str = row[sell_idx]
 
-                try:
-                    buy_val = int(float(row[buy_col_idx].replace(',', '')))
-                except ValueError:
-                    buy_val = 0
-                    
-                try:
-                    sell_val = int(float(row[sell_col_idx].replace(',', '')))
-                except ValueError:
-                    sell_val = 0
+                price_val = float(p_str.replace(',', '')) if p_str else 0.0
+                buy_val = int(float(b_str.replace(',', ''))) if b_str else 0
+                sell_val = int(float(s_str.replace(',', ''))) if s_str else 0
                 
-                if broker not in brokers_data:
-                    brokers_data[broker] = {'buy': 0, 'sell': 0, 'buy_amt': 0.0, 'sell_amt': 0.0}
+                info = brokers_data.get(broker)
+                if not info:
+                    info = {'buy': 0, 'sell': 0, 'buy_amt': 0.0, 'sell_amt': 0.0}
+                    brokers_data[broker] = info
                 
-                brokers_data[broker]['buy'] += buy_val
-                brokers_data[broker]['sell'] += sell_val
-                brokers_data[broker]['buy_amt'] += price_val * buy_val
-                brokers_data[broker]['sell_amt'] += price_val * sell_val
+                info['buy'] += buy_val
+                info['sell'] += sell_val
+                info['buy_amt'] += price_val * buy_val
+                info['sell_amt'] += price_val * sell_val
 
-            process_entry(1, 2, 3, 4)
-            process_entry(7, 8, 9, 10)
-            
         if not brokers_data:
             return jsonify({
                 "success": False,
