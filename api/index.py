@@ -200,7 +200,7 @@ def get_captcha():
         
         # Call the user's custom OCR server to automate recognition
         ocr_code = ""
-        ocr_url = os.environ.get("OCR_API_URL", "http://yustudio.xyz:40010/ocr")
+        ocr_url = os.environ.get("OCR_API_URL", "http://pal.yustudio.xyz:40010/ocr")
         if ocr_url:
             try:
                 ocr_resp = requests.post(ocr_url, json={"image": captcha_b64}, timeout=8)
